@@ -1,0 +1,29 @@
+[33mcommit 264f17d52534969e8b5f50c5c0a7c69196ac042c[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m
+Author: DavideNuzzi <davidenuzzi@gmail.com>
+Date:   Fri Oct 4 17:47:40 2024 +0200
+
+    Changed gitignore
+
+[33mcommit e1b486c5179c63584717dada16ff4d67a407673c[m
+Author: DavideNuzzi <davidenuzzi@gmail.com>
+Date:   Fri Oct 4 17:31:34 2024 +0200
+
+    Excluded Datasets
+
+[33mcommit 81c10458aa2b092c82b87ac4671919b8f0b32256[m
+Author: DavideNuzzi <davidenuzzi@gmail.com>
+Date:   Fri Oct 4 17:20:40 2024 +0200
+
+    Added most files and two examples
+
+[33mcommit 2fb2432550274c8b4249df679d45f2534a0c1e1e[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: DavideNuzzi <davidenuzzi@gmail.com>
+Date:   Fri Oct 4 17:09:27 2024 +0200
+
+    First file test
+
+[33mcommit 31152d5e1a110055b9f44baaac78567d625a9d91[m
+Author: DavideNuzzi <37365594+DavideNuzzi@users.noreply.github.com>
+Date:   Fri Oct 4 15:29:20 2024 +0200
+
+    Initial commit
