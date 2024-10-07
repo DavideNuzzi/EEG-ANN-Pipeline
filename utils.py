@@ -2,6 +2,8 @@ import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 from models.BaseModel import BaseModel
+from torch import nn
+import torch
 
 def check_number_timepoints(trials):
 
@@ -40,6 +42,17 @@ def count_model_parameters(model):
         model_pars_num += n
     return model_pars_num
 
+def model_summary(model):
+        
+    print(f'{"name":<50}:  count\n')
+    for name, p in model.named_parameters():
+        s = p.size()
+        n = 1
+        for ps in s:
+            n *= ps
+
+        print(f'{name:<50}:  {n}')
+
 def plot_training_metrics(metrics):
 
     metric_names = list(dict.fromkeys([key.replace('_training','').replace('_validation','') for key in metrics]))
@@ -66,6 +79,8 @@ def plot_training_metrics(metrics):
         plt.title(metric_name.replace('_history',''))
     plt.show()
     
+
+
 def train_model(model: BaseModel, optimizer, dataloader_training, dataloader_validation=None, epochs=100,
                 early_stopping=False, patience=10, stopping_metric='loss'):
 

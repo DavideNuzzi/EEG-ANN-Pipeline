@@ -22,9 +22,6 @@ class TrialEEG:
         self.num_channels, self.num_timepoints = self.eeg_signals.shape
         self.timepoints = np.array(timepoints, dtype=np.float32)
 
-    def plot_trial(self):
-        pass
-
     def __str__(self):
         info_string = f'Numero canali = {self.num_channels}, numero timepoints = {self.num_timepoints}\n'
         if self.timepoints is not None:
