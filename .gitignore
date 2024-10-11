@@ -163,3 +163,4 @@ cython_debug/
 DatasetBCI/
 /DatasetBCI/
 DatasetBCI
+saved_models

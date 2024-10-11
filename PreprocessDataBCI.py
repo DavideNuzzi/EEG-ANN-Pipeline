@@ -1,7 +1,7 @@
 import mne
-import pickle as pkl
 from datasets import TrialEEG, DatasetEEG
 import scipy.io
+import numpy as np
 
 event_codes = {
     276 : 'Idle Eyes Open',
@@ -21,7 +21,7 @@ for n in range(1, 10):
     for mode in ['T','E']:
         
         filename = f'A0{n}{mode}'
-        data = mne.io.read_raw_gdf(f'DatasetBCI/BCICIV_2a_gdf/{filename}.gdf')
+        data = mne.io.read_raw_gdf(f'DatasetBCI/BCICIV_2a_gdf/{filename}.gdf', verbose=False)
 
         # Informazioni sul file considerato
         subject_number = filename[1:3]
@@ -38,10 +38,10 @@ for n in range(1, 10):
 
         # Estraggo la matrice dei dati
         data_matrix = data.get_data()
-        times = data.times
+        times = data.times 
 
         # Estraggo gli eventi dalle annotazioni
-        events, events_id_map = mne.events_from_annotations(data)
+        events, events_id_map = mne.events_from_annotations(data, verbose=False)
         events_id_map_reverse = {events_id_map[key]:int(key) for key in events_id_map}
         events_string = [event_codes[events_id_map_reverse[x]] for x in list(events[:,2])]
 
@@ -50,6 +50,7 @@ for n in range(1, 10):
         trials_data = []
         trials_times = []
         trials_labels = []
+        good_trials = []
 
         # Ciclo sugli eventi 
         for i in range(events.shape[0]-1):
@@ -68,7 +69,11 @@ for n in range(1, 10):
                     shift = 2
                     next_event_id = events_string[i+shift]
                     next_event_time = events[i+shift,0]
+                    good_trial = False
+                else:
+                    good_trial = True
 
+                
                 # La label è proprio l'evento nel caso del training, mentre va presa a parte per il test
                 if dataset_type == 'Training':
                     label = labels_dict[next_event_id]
@@ -89,11 +94,16 @@ for n in range(1, 10):
                 # Shift times so that the cue is a t = 0
                 trial_times = trial_times - times[next_event_time]
 
+                # Conto il numero di punti fuori scala
+                bad_points_num = np.sum(trial_data > 9.9e-5)
+                if bad_points_num >= 10: good_trial = False
+                good_trials.append(good_trial)
+
                 trials_data.append(trial_data)
                 trials_times.append(trial_times)
                 trials_labels.append(label)
 
-
+        
         # Costruisco i trial nel mio formato dati
         trials = []
 
@@ -103,8 +113,17 @@ for n in range(1, 10):
 
         info = {'subject': n, 'fs': 250}
         dataset = DatasetEEG(trials, info)
-        print(dataset)
 
         save_filename = f'DatasetBCI/Dataset_{subject_number}_{dataset_type}.dataset'
         dataset.save(save_filename)
+
+
+        # Salvo un dataset con i soli trial buoni
+        trials_good = [trials[i] for i in range(len(trials)) if good_trials[i]]
+
+        info = {'subject': n, 'fs': 250}
+        dataset_good = DatasetEEG(trials_good, info)
+        print(dataset_good)     
+        save_filename = f'DatasetBCI/Dataset_{subject_number}_{dataset_type}_NoArtifacts.dataset'
+        dataset_good.save(save_filename)
 

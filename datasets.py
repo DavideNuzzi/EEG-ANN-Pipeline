@@ -5,9 +5,10 @@ from typing import List
 from torch.utils.data import Dataset
 from matplotlib import pyplot as plt
 import matplotlib.cm as cm
-from utils import check_number_timepoints, check_labels_type
+from utils import check_number_timepoints, check_labels_type, convert_labels_string_to_int
 import random
-
+from torch.utils.data.sampler import Sampler
+from torch.utils.data.dataloader import DataLoader
 
 
 # Questa è la classe più generale con cui descrivere un singolo trial di dati.
@@ -76,7 +77,7 @@ class DatasetEEG():
         self.num_trials = len(trials)
         self.num_channels = trials[0].eeg_signals.shape[0]
         self.num_timepoints = check_number_timepoints(trials)
-        self.labels_type = check_labels_type(trials)
+        self.labels_type, self.labels_format = check_labels_type(trials)
 
     
     # Funzione per salvare il dataset su file (per ora con pickle, in futuro con altri formati)
@@ -97,9 +98,11 @@ class DatasetEEG():
         info_string += f"{'num_channels':25}:  {self.num_channels}\n"
         info_string += f"{'num_timepoints':25}:  {self.num_timepoints}\n"
         info_string += f"{'labels_type':25}:  {self.labels_type}\n"
+        info_string += f"{'labels_format':25}:  {self.labels_format}\n"
 
-        for key in self.info:
-            info_string += f'{key:<25}:  {self.info[key]}\n'
+        if self.info:
+            for key in self.info:
+                info_string += f'{key:<25}:  {self.info[key]}\n'
         return info_string
 
     # Estrae un subset di trial e crea un nuovo dataset a partire da questi
@@ -125,29 +128,29 @@ class DatasetEEG():
 
         return dataset_train, dataset_validation
     
-    def create_pytorch_dataset(self, validation_size=0.2, standardization_method='crop', standardization_params=None):
+    # def create_pytorch_dataset(self, validation_size=0.2, standardization_method='crop', standardization_params=None):
 
-        if validation_size > 0:
+    #     if validation_size > 0:
 
-            split_idx = int(np.round((1-validation_size) * self.info.num_trials))
+    #         split_idx = int(np.round((1-validation_size) * self.info.num_trials))
             
-            random_indices = list(np.random.permutation(self.info.num_trials))
-            train_indices = random_indices[0:split_idx]
-            validation_indices = random_indices[split_idx:]
+    #         random_indices = list(np.random.permutation(self.info.num_trials))
+    #         train_indices = random_indices[0:split_idx]
+    #         validation_indices = random_indices[split_idx:]
         
-            if split_idx < self.info.num_trials - 1:
-                trials_training = [self.trials[i] for i in train_indices]
-                trials_validation = [self.trials[i] for i in validation_indices]
+    #         if split_idx < self.info.num_trials - 1:
+    #             trials_training = [self.trials[i] for i in train_indices]
+    #             trials_validation = [self.trials[i] for i in validation_indices]
 
-                dataset_training = DatasetEEGTorch(trials_training, standardization_method, standardization_params)
-                dataset_validation = DatasetEEGTorch(trials_validation, standardization_method, standardization_params)
-                return dataset_training, dataset_validation
+    #             dataset_training = DatasetEEGTorch(trials_training, standardization_method, standardization_params)
+    #             dataset_validation = DatasetEEGTorch(trials_validation, standardization_method, standardization_params)
+    #             return dataset_training, dataset_validation
 
-        dataset_training = DatasetEEGTorch(self.trials, standardization_method, standardization_params)
-        return dataset_training
+    #     dataset_training = DatasetEEGTorch(self.trials, standardization_method, standardization_params)
+    #     return dataset_training
 
-    def plot_trials(self, idx):
-        pass
+    # def plot_trials(self, idx):
+    #     pass
 
 
 class DatasetEEGTorch(Dataset):
@@ -160,7 +163,10 @@ class DatasetEEGTorch(Dataset):
             raise ValueError('I trial non hanno tutti la stessa lunghezza')
         
         # Mantengo un riferimento al dataset da cui previene
+        # e altre informazioni utili
         self.dataset_original = dataset
+        self.labels_type = dataset.labels_type
+        self.labels_format = dataset.labels_format
 
         # Per comodità salvo anche qui come attributi le info sul dataset
         self.num_trials = dataset.num_trials
@@ -173,8 +179,9 @@ class DatasetEEGTorch(Dataset):
         for i, trial in enumerate(dataset.trials):
             self.eeg_signals[i, 0, :, :] = torch.from_numpy(trial.eeg_signals)
 
-        # Creo un tensore con le label (se sono stringhe devo prima convertirle in interi)
-        self.create_labels_tensor()
+        # Caso singola label: creo un tensore  (se sono stringhe devo prima convertirle in interi)
+        # Caso multi-label: creo un dizionario e a ogni tipo di label associo un tensore
+        self.create_labels()
 
     def __len__(self):
         return self.num_trials
@@ -185,43 +192,244 @@ class DatasetEEGTorch(Dataset):
             idx = idx.tolist()
 
         x = self.eeg_signals[idx, :, :, :]
-        y = self.labels[idx]
+
+        # Le label dipendono dal caso
+        if self.labels_type == 'single_label':
+            y = self.labels[idx]
+        else:
+            y = {label_name: self.labels[label_name][idx] for label_name in self.label_names }
 
         return x, y
     
-    def create_labels_tensor(self):
+    def create_labels(self):
 
-        # Inizializzo il tensore
-        self.labels = torch.zeros(self.num_trials, dtype=torch.long)
+        # Separo il caso single-label da quello multi-label
 
-        # Se le labels sono stringhe, mi servono dei dizionari per convertirle
-        if self.dataset_original.labels_type == 'string':
-            self.labels_int_to_str = dict()
-            self.labels_str_to_int = dict()
+        # Caso single label
+        if self.labels_type == 'single_label':
 
-        for i, trial in enumerate(self.dataset_original.trials):
+            # Creo una lista con le label
+            labels = [trial.label for trial in self.dataset_original.trials]
+
+            # Controllo se sono stringhe
+            if self.labels_format == 'string':
+
+                # Nel caso le converto e salvo il dizionario per tornare indietro
+                labels, labels_int_to_str = convert_labels_string_to_int(labels)
+                self.labels_int_to_str = labels_int_to_str
+
+            # Trasformo le label in un tensore e le salvo
+            self.labels = torch.LongTensor(labels)
             
-            label = trial.label
+        else:
 
-            # Se è una stringa la converto
-            if self.dataset_original.labels_type == 'string':
+            # Nel caso multilabel produco un tensore per ogni tipo di variabile
+            # e poi li metto in un dizionario
+            self.label_names = list(self.dataset_original.trials[0].label.keys())
 
-                # Controllo se ho già trovato questa label
-                if label not in self.labels_str_to_int:
+            # Dizionario in cui mettere le label convertite
+            labels = dict()
 
-                    # Aggiungo un elemento a entrambi i dizionari di conversione
-                    new_label_int = len(self.labels_int_to_str)
-                    self.labels_str_to_int[label] = new_label_int
-                    self.labels_int_to_str[new_label_int] = label
-
-                # La converto
-                label = self.labels_str_to_int[label]
+            # Dizionario in cui mettere i vari dizionari per la conversione da int a str (se multipli)
+            labels_int_to_str = dict()
             
-            self.labels[i] = trial.label
+            # Ciclo su ogni tipo di label nella lista
+            for label_name in self.label_names:
+
+                # Creo una lista con le label relative a questa chiave
+                labels_i = [trial.label[label_name] for trial in self.dataset_original.trials]
+                
+                # Controllo se sono stringhe e nel caso le converto
+                if self.labels_format[label_name] == 'string':
+
+                    labels_i, labels_int_to_str_i = convert_labels_string_to_int(labels_i)
+                    labels_int_to_str[label_name] = labels_int_to_str_i
+
+                # Converto in base anche al tipo di dato
+                if self.labels_format[label_name] == 'float':
+                    labels_i = torch.FloatTensor(labels_i)
+                else:
+                    labels_i = torch.LongTensor(labels_i)
+
+                # Le salvo nel dizionario globale
+                labels[label_name] = labels_i
+            
+            # Salvo le label nella classe
+            self.labels = labels
+
+            # Salvo il dizionario di conversione se non è vuoto
+            if len(labels_int_to_str) > 0:
+                self.labels_int_to_str = labels_int_to_str            
 
     def to_device(self, device):
+
+        # Sposto i dati sul device
         self.eeg_signals = self.eeg_signals.to(device)
-        self.labels = self.labels.to(device)
+
+        # Sposto le label sul device, tenendo conto dei possibili casi
+        if self.labels_type == 'single_label':
+            self.labels = self.labels.to(device)
+        else:
+            for key in self.labels:
+                self.labels[key] = self.labels[key].to(device)
+
+
+# Permette di samplare indici per costruire i sample positivi
+# a partire da una label discreta
+class SamplerDiscrete():
+
+    def __init__(self, labels):
+
+        # Conversione numpy
+        self.labels = labels
+
+        # Ordino
+        self.sorted_idx = torch.from_numpy(np.argsort(self.labels))
+
+        # Distribuzione cumulativa
+        self.counts = np.bincount(self.labels)
+        self.cdf = np.zeros((len(self.counts) + 1,))
+        self.cdf[1:] = np.cumsum(self.counts)
+
+    def sample(self, reference_idx):
+
+        idx = np.random.uniform(0, 1, len(reference_idx))
+        idx *= self.cdf[reference_idx + 1] - self.cdf[reference_idx]
+        idx += self.cdf[reference_idx]
+        idx = idx.astype(int)
+
+        return self.sorted_idx[idx]
+
+
+
+# Il contrastive batch sampler deve fornire tre tensori, x, y_pos e y_neg
+# tutti della stessa dimensione batch_size x channels x timepoints
+# Per farlo genera prima gli esempi negativi e le reference casualmente
+# Poi deve avere un criterio con cui samplare i positivi
+class DataLoaderContrastive():
+
+    def __init__(self, dataset: DatasetEEGTorch, batch_size, batches_per_epoch=1):
+
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.batches_per_epoch = batches_per_epoch
+
+        self.prepare_labels()
+
+
+    def prepare_labels(self):
+        
+        self.labels = self.dataset.labels.cpu().numpy()
+
+        if self.dataset.labels_type == 'single_label':     
+            self.positive_sampler = SamplerDiscrete(self.labels)
+        
+        else:
+            return
+
+
+    def sample_positive(self, reference_idx):
+        
+        reference_labels = self.labels[reference_idx]
+        return self.positive_sampler.sample(reference_labels)
+        
+
+    def __iter__(self):
+
+        for _ in range(self.batches_per_epoch):
+
+            # Genero i numeri casuali per reference e negative
+            rand_idx = np.random.choice(self.dataset.num_trials, self.batch_size * 2)
+            reference_idx = rand_idx[0:self.batch_size]
+            negative_idx = rand_idx[self.batch_size:]
+            positive_idx = self.sample_positive(reference_idx)
+
+            x = self.dataset.eeg_signals[reference_idx,:,:,:]
+            y_neg = self.dataset.eeg_signals[negative_idx,:,:,:]
+            y_pos = self.dataset.eeg_signals[positive_idx,:,:,:]
+
+            # Devo ora generare i positivi
+            yield x, y_pos, y_neg, self.dataset.labels[reference_idx]
+
+    def __len__(self):
+        return self.batches_per_epoch
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class DatasetEEGTorchInfoNCE(DatasetEEGTorch):
+
+    def __init__(self, dataset: DatasetEEG, label_distance_function=None):
+
+        super().__init__(dataset)
+
+        # Creo anche una matrice di pesi da usare poi in InfoNCE
+        # Per farlo capisco se sono nel caso single_label o multilabel
+        # if label_distance_function is not None:
+        #     N = self.num_trials
+
+        #     if dataset.labels_type == 'single_label':
+        #         num_labels = 1 
+        
+        #     if dataset.labels_type == 'multi_label': 
+        #         num_labels = len(self.labels)
+
+        #     self.label_weights = torch.zeros((N,N,num_labels))
+
+        #     # Trasformo le label da dizionario di liste a lista di dizionari
+        #     if dataset.labels_type == 'multi_label': 
+        #         labels_lists = [{key: self.labels[key][i] for key in self.labels} for i in range(self.num_trials)]
+
+        #     for i in range(N):
+
+        #         if dataset.labels_type == 'single_label':
+        #             self.label_weights[i,:] = label_distance_function(self.labels[i], self.labels)
+        #         else:
+        #             self.label_weights[i,:] = label_distance_function(labels_lists[i], self.labels)
+
+
+    def __len__(self):
+        return self.num_trials
+
+    def __getitem__(self, idx):
+        
+        x = self.eeg_signals[idx, :, :, :]
+
+        # Le label dipendono dal caso
+        if self.labels_type == 'single_label':
+            y = self.labels[idx]
+        else:
+            y = {label_name: self.labels[label_name][idx] for label_name in self.label_names }
+
+        return x, y, idx
+    
+    def to_device(self, device):
+
+        # Sposto i dati sul device
+        self.eeg_signals = self.eeg_signals.to(device)
+
+        # Sposto le label sul device, tenendo conto dei possibili casi
+        if self.labels_type == 'single_label':
+            self.labels = self.labels.to(device)
+        else:
+            for key in self.labels:
+                self.labels[key] = self.labels[key].to(device)
+
+        # Sposto i pesi
+        # self.label_weights = self.label_weights.to(device)
+
 
 
 # Questo dataset sfrutta l'idea di CEBRA, ma la vicinanza
