@@ -128,31 +128,6 @@ class DatasetEEG():
 
         return dataset_train, dataset_validation
     
-    # def create_pytorch_dataset(self, validation_size=0.2, standardization_method='crop', standardization_params=None):
-
-    #     if validation_size > 0:
-
-    #         split_idx = int(np.round((1-validation_size) * self.info.num_trials))
-            
-    #         random_indices = list(np.random.permutation(self.info.num_trials))
-    #         train_indices = random_indices[0:split_idx]
-    #         validation_indices = random_indices[split_idx:]
-        
-    #         if split_idx < self.info.num_trials - 1:
-    #             trials_training = [self.trials[i] for i in train_indices]
-    #             trials_validation = [self.trials[i] for i in validation_indices]
-
-    #             dataset_training = DatasetEEGTorch(trials_training, standardization_method, standardization_params)
-    #             dataset_validation = DatasetEEGTorch(trials_validation, standardization_method, standardization_params)
-    #             return dataset_training, dataset_validation
-
-    #     dataset_training = DatasetEEGTorch(self.trials, standardization_method, standardization_params)
-    #     return dataset_training
-
-    # def plot_trials(self, idx):
-    #     pass
-
-
 class DatasetEEGTorch(Dataset):
 
     def __init__(self, dataset: DatasetEEG):
@@ -274,13 +249,19 @@ class DatasetEEGTorch(Dataset):
                 self.labels[key] = self.labels[key].to(device)
 
 
+
+# ----------------------------- Standard InfoNCE ----------------------------- #
+
 # Permette di samplare indici per costruire i sample positivi
 # a partire da una label discreta
 class SamplerDiscrete():
 
     def __init__(self, labels):
 
-        # Conversione numpy
+        # Se non è un array di numpy, lo converto
+        if torch.is_tensor(labels):
+            labels = labels.cpu().numpy()
+
         self.labels = labels
 
         # Ordino
@@ -291,15 +272,65 @@ class SamplerDiscrete():
         self.cdf = np.zeros((len(self.counts) + 1,))
         self.cdf[1:] = np.cumsum(self.counts)
 
-    def sample(self, reference_idx):
+    def sample(self, reference_labels):
 
-        idx = np.random.uniform(0, 1, len(reference_idx))
-        idx *= self.cdf[reference_idx + 1] - self.cdf[reference_idx]
-        idx += self.cdf[reference_idx]
+        # Converto le label se necessario
+        if torch.is_tensor(reference_labels):
+            reference_labels = reference_labels.cpu().numpy()
+
+        idx = np.random.uniform(0, 1, len(reference_labels))
+        idx *= self.cdf[reference_labels + 1] - self.cdf[reference_labels]
+        idx += self.cdf[reference_labels]
         idx = idx.astype(int)
 
         return self.sorted_idx[idx]
+    
 
+# Permette di samplare indici per costruire i sample positivi
+# a partire da una label continua
+class SamplerContinuousGaussian():
+
+    def __init__(self, labels, std=1):
+
+        # Se non è un array di numpy, lo converto
+        if torch.is_tensor(labels):
+            labels = labels.cpu().numpy()
+
+        # Se la dimensione è uno, li espando
+        if labels.ndim == 1:
+            labels = np.expand_dims(labels, axis=-1)
+
+        self.labels = labels
+        self.std = std
+
+        # Precalcolo i quadrati per semplificare il conto dopo
+        self.labels_squared = self.labels**2
+
+    def sample(self, reference_labels):
+
+        # Converto le label se necessario
+        if torch.is_tensor(reference_labels):
+            reference_labels = reference_labels.cpu().numpy()
+
+        # Se la dimensione è uno, li espando
+        if reference_labels.ndim == 1:
+            reference_labels = np.expand_dims(reference_labels, axis=-1)   
+
+        # Samplo da una gaussiana
+        samples = np.random.randn(*reference_labels.shape) * self.std + reference_labels
+
+        # So che "self.labels" ha dimensione (N_trials, 1)
+        # e che "reference_values" ha dimensione (batch_size, 1)
+        # Voglio la distanza tra ogni elemento di reference_values e ogni 
+        # elemento di self.labels. Quindi sfruttando un po' di trucchetti
+        # di broacasting posso calcolare (x - y)^2 = x^2 + y^2 - 2xy
+        samples_squared = (samples**2).T
+
+        product_term = np.einsum('ni,mi->nm', self.labels, reference_labels)
+        distance_matrix = self.labels_squared + samples_squared - 2 * product_term
+
+        # Data la matrice di distanze, cerco gli elementi che la minimizzano per ogni reference
+        return np.argmin(distance_matrix, axis=0)
 
 
 # Il contrastive batch sampler deve fornire tre tensori, x, y_pos e y_neg
@@ -308,198 +339,88 @@ class SamplerDiscrete():
 # Poi deve avere un criterio con cui samplare i positivi
 class DataLoaderContrastive():
 
-    def __init__(self, dataset: DatasetEEGTorch, batch_size, batches_per_epoch=1):
+    def __init__(self, dataset: DatasetEEGTorch, samplers, batch_size, batches_per_epoch=1):
 
         self.dataset = dataset
         self.batch_size = batch_size
         self.batches_per_epoch = batches_per_epoch
-
-        self.prepare_labels()
-
-
-    def prepare_labels(self):
-        
-        self.labels = self.dataset.labels.cpu().numpy()
-
-        if self.dataset.labels_type == 'single_label':     
-            self.positive_sampler = SamplerDiscrete(self.labels)
-        
-        else:
-            return
-
+        self.samplers = samplers
 
     def sample_positive(self, reference_idx):
-        
-        reference_labels = self.labels[reference_idx]
-        return self.positive_sampler.sample(reference_labels)
-        
 
+        if self.dataset.labels_type == 'single_label':     
+            reference_labels = self.dataset.labels[reference_idx]
+            return self.samplers.sample(reference_labels)
+        else:
+            positive_samples = dict()
+            for label_name in self.samplers:
+                reference_labels = self.dataset.labels[label_name][reference_idx]
+                positive_samples[label_name] = self.samplers[label_name].sample(reference_labels) 
+            return positive_samples
+        
     def __iter__(self):
 
         for _ in range(self.batches_per_epoch):
 
             # Genero i numeri casuali per reference e negative
             rand_idx = np.random.choice(self.dataset.num_trials, self.batch_size * 2)
+
+            # Prendo gli indici di reference e negative
             reference_idx = rand_idx[0:self.batch_size]
             negative_idx = rand_idx[self.batch_size:]
-            positive_idx = self.sample_positive(reference_idx)
 
+            # Prendo i sample relativi
             x = self.dataset.eeg_signals[reference_idx,:,:,:]
             y_neg = self.dataset.eeg_signals[negative_idx,:,:,:]
-            y_pos = self.dataset.eeg_signals[positive_idx,:,:,:]
 
-            # Devo ora generare i positivi
-            yield x, y_pos, y_neg, self.dataset.labels[reference_idx]
+            # Per le positive devo samplare adeguatamente
+            # Se i positive_idx sono una lista (più label)
+            # devo creare un tensore più grande per gli y_pos 
+            positive_idx = self.sample_positive(reference_idx)
+
+            if self.dataset.labels_type == 'single_label':     
+                y_pos = self.dataset.eeg_signals[positive_idx,:,:,:]
+                labels = self.dataset.labels[reference_idx]
+            else:
+                y_pos = {label_name: self.dataset.eeg_signals[positive_idx[label_name],:,:,:] for label_name in positive_idx}
+                labels = {label_name: self.dataset.labels[label_name][reference_idx] for label_name in positive_idx}
+            yield x, y_pos, y_neg, labels
+
 
     def __len__(self):
         return self.batches_per_epoch
     
 
+# ---------------------------- My modified InfoNCE --------------------------- #
+class LabelsDistance():
 
+    def __init__(self, labels_distance_functions):
 
-
-
-
-
-
-
-
-
-
-
-
-
-class DatasetEEGTorchInfoNCE(DatasetEEGTorch):
-
-    def __init__(self, dataset: DatasetEEG, label_distance_function=None):
-
-        super().__init__(dataset)
-
-        # Creo anche una matrice di pesi da usare poi in InfoNCE
-        # Per farlo capisco se sono nel caso single_label o multilabel
-        # if label_distance_function is not None:
-        #     N = self.num_trials
-
-        #     if dataset.labels_type == 'single_label':
-        #         num_labels = 1 
-        
-        #     if dataset.labels_type == 'multi_label': 
-        #         num_labels = len(self.labels)
-
-        #     self.label_weights = torch.zeros((N,N,num_labels))
-
-        #     # Trasformo le label da dizionario di liste a lista di dizionari
-        #     if dataset.labels_type == 'multi_label': 
-        #         labels_lists = [{key: self.labels[key][i] for key in self.labels} for i in range(self.num_trials)]
-
-        #     for i in range(N):
-
-        #         if dataset.labels_type == 'single_label':
-        #             self.label_weights[i,:] = label_distance_function(self.labels[i], self.labels)
-        #         else:
-        #             self.label_weights[i,:] = label_distance_function(labels_lists[i], self.labels)
-
-
-    def __len__(self):
-        return self.num_trials
-
-    def __getitem__(self, idx):
-        
-        x = self.eeg_signals[idx, :, :, :]
-
-        # Le label dipendono dal caso
-        if self.labels_type == 'single_label':
-            y = self.labels[idx]
+        if type(labels_distance_functions) is dict:
+            self.multi_label = True
         else:
-            y = {label_name: self.labels[label_name][idx] for label_name in self.label_names }
+            self.multi_label = False
 
-        return x, y, idx
+        self.labels_distance_functions = labels_distance_functions
     
-    def to_device(self, device):
 
-        # Sposto i dati sul device
-        self.eeg_signals = self.eeg_signals.to(device)
+    def get_weights(self, labels):
+    
+        def pairwise_tensor_function(f, x):
+            x = x.view((-1,1))
+            return f(x, x.T)
+        
+        if self.multi_label:
+            weights = []
 
-        # Sposto le label sul device, tenendo conto dei possibili casi
-        if self.labels_type == 'single_label':
-            self.labels = self.labels.to(device)
+            for label_name in labels:
+                weights.append( pairwise_tensor_function(
+                                self.labels_distance_functions[label_name],
+                                labels[label_name]))
+                            
+            return torch.stack(weights, dim=-1)
         else:
-            for key in self.labels:
-                self.labels[key] = self.labels[key].to(device)
-
-        # Sposto i pesi
-        # self.label_weights = self.label_weights.to(device)
-
-
-
-# Questo dataset sfrutta l'idea di CEBRA, ma la vicinanza
-# tra due sample "x" è data dalla label stessa "y".
-# Quindi quando genero un batch di dati, devo generare:
-# x     :   (batch_size, num_channels, num_times)
-# y_p   :   (batch_size, num_channels, num_times)
-# y_m   :   (batch_size, 10, num_channels, num_times)
-# y_p e y_m vengono samplati uniformemente tra tutti i trial con la stessa label
-class DatasetEEGTorchCebra(DatasetEEGTorch):
-    
-    def __init__(self, dataset: DatasetEEG):
+            batch_size = len(labels)
+            return pairwise_tensor_function(self.labels_distance_functions, labels).view((batch_size,batch_size,1))
         
-        # Inizializzo la classe madre
-        super().__init__(dataset)
-        # DatasetEEGTorch.__init__(self, dataset)
 
-    def __getitem__(self, idx):
-
-        # Prendo un sample
-        x = self.eeg_signals[idx, :, :, :]
-
-        # Labels
-        label = self.labels[idx]
-
-        # Trovo un esempio positivo e dieci negativi
-        y_pos = self.get_sample_from_label(label, exclude_ind=idx)
-        y_neg = self.get_negative_samples(label, device=x.device, num=10)
-
-        return x, y_pos, y_neg, label
-    
-    
-    # Restituisce un sample che ha la label scelta
-    # Non può restituire il sample che ha lo stesso id di "exclude_ind"
-    # Se complementary = True, restituisce il sample con la label indicata
-    # Se complementary = False, restituisce un sample con una label diversa da quella indicata
-    def get_sample_from_label(self, label, exclude_ind, complementary=False):
-
-        # Ripeto fino a quando non ho trovato
-        found = False
-
-        while not found:
-
-            # Scelgo a caso un indice
-            random_ind = random.randint(0, self.num_trials - 1)
-
-            # Escludo nel caso sia l'indice vietato
-            if random_ind == exclude_ind: continue
-
-            # Prendo la label corrispondente
-            sample_label = self.labels[random_ind]
-
-            if complementary is False:
-                if sample_label == label:
-                    return self.eeg_signals[random_ind,:,:,:]
-            else:
-                if sample_label != label:
-                    return self.eeg_signals[random_ind,:,:,:]
-    
-    # Funzione speciale che restituisce più negative samples alla volta
-    # Non serve un argomento "exclude_ind" perché per i negative samples
-    # non può mai accadere che coincidano con l'indice di x
-    def get_negative_samples(self, label, device, num=10,):
-        
-        y_neg = torch.zeros((num, 1, self.num_channels, self.num_timepoints), device=device)
-        
-        for i in range(num):
-            y_neg[i,:,:,:] = self.get_sample_from_label(label, exclude_ind=-1, complementary=True)
-
-        return y_neg
-
-
- 

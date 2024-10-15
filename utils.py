@@ -165,7 +165,7 @@ def train_model(model: BaseModel, optimizer, dataloader_training, dataloader_val
 
             # Medio le metriche
             for metric in metrics_epoch_training:
-                metrics_epoch_training[metric] /= len(dataloader_training.dataset)
+                metrics_epoch_training[metric] /= len(dataloader_training) * dataloader_training.batch_size
 
             # -------------------------------- Test Phase -------------------------------- #
             if dataloader_validation is not None:
@@ -189,7 +189,7 @@ def train_model(model: BaseModel, optimizer, dataloader_training, dataloader_val
 
                 # Medio le metriche
                 for metric in metrics_epoch_validation:
-                    metrics_epoch_validation[metric] /= len(dataloader_validation.dataset)
+                    metrics_epoch_validation[metric] /= len(dataloader_validation) * dataloader_validation.batch_size
 
             # Mostro i risultati (training o validation, a seconda del caso) nella progressbar
             if dataloader_validation is None:
