@@ -160,7 +160,15 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
-DatasetBCI/
-/DatasetBCI/
-DatasetBCI
+dataset_bci/original/BCICIV_2a_gdf/*.gdf
+!dataset_bci/original/BCICIV_2a_gdf/A01*.gdf
+dataset_bci/original/test_labels/*.mat
+!dataset_bci/original/test_labels/A01*.mat
+dataset_bci/processed/exclude_rejected/*.dataset
+!dataset_bci/processed/exclude_rejected/01_*.dataset
+dataset_bci/processed/include_rejected/*.dataset
+!dataset_bci/processed/include_rejected/01_*.dataset
+
 saved_models
+DatasetEEG_Corbetta
+old
