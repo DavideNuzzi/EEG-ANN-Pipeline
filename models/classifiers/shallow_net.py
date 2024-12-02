@@ -6,8 +6,8 @@ from models.layers import Conv2dMaxNorm
 
 class ShallowNet(BaseClassifier):
 
-    def __init__(self, num_classes, channels, filters=40):
-        super(ShallowNet, self).__init__()
+    def __init__(self, num_classes, channels, filters=40, metrics=None):
+        super(ShallowNet, self).__init__(metrics)
 
         self.num_classes = num_classes
         self.filters = filters
@@ -33,3 +33,5 @@ class ShallowNet(BaseClassifier):
         x = self.flatten(x)
         x = self.linear(x)
         return x
+    
+    

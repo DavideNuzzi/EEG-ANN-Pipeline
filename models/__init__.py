@@ -1,9 +1,9 @@
-from .classifiers import ShallowNet, DeepNet, EEGNet, EEGNetImproved, EEGNetMultiscale
+from .classifiers import ShallowNet, DeepNet, EEGNet, EEGNetImproved, EEGNetMultiscale, EEGNetAdaptive
 from .vae import VAE, VAEClassifier
 from .recurrent import LSTMClassifier, LSTMClassifierAllTimes, LSTMClassifierTimeMask, LSTMClassifierAttention
 from .contrastive import EncoderContrastiveWeights, EncoderInfoNCE
 
-all = [
+__all__ = [
     'ShallowNet',
     'DeepNet',
     'EEGNet',
@@ -12,5 +12,10 @@ all = [
     'VAE',
     'VAEClassifier',
     'EncoderInfoNCE',
-    'EncoderContrastiveWeights'
-]
+    'EncoderContrastiveWeights',
+    'EEGNetAdaptive',
+    'LSTMClassifier',
+    'LSTMClassifierAllTimes',
+    'LSTMClassifierTimeMask',
+    'LSTMClassifierAttention'
+    ]

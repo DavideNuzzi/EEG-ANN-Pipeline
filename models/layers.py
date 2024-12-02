@@ -103,5 +103,3 @@ class EEGConvBlockMultiscale(nn.Module):
         x = x.view(batch_size, 1, -1, num_timepoints)
         
         return x
-
-

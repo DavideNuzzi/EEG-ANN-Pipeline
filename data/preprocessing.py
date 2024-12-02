@@ -71,7 +71,7 @@ def crop_signals(dataset: DatasetEEG, t_min, t_max):
 
         # Crea maschera per timepoints validi
         times = trial.timepoints
-        mask = (times >= t_min) & (times < t_max)  
+        mask = (times >= t_min) & (times <= t_max)  
 
         # Alla prima iterazione vedo la lunghezza della maschera e la uso
         # come riferimento per tutte le altre
@@ -116,7 +116,7 @@ def create_dataset_from_windows(dataset, time_start, time_end, time_window, fs, 
         # Ciclo sulle finestre
         t_start = time_start
         t_end = t_start + time_window
-
+        
         while t_end < time_end:
             mask = (times >= t_start) & (times < t_end)
             x = signals[:, mask]
@@ -127,5 +127,5 @@ def create_dataset_from_windows(dataset, time_start, time_end, time_window, fs, 
 
             trial_new = TrialEEG(x, label, t)
             trials_new.append(trial_new)
-
+    
     return DatasetEEG(trials_new, info=dataset.info)

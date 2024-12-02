@@ -170,5 +170,6 @@ dataset_bci/processed/include_rejected/*.dataset
 !dataset_bci/processed/include_rejected/01_*.dataset
 
 saved_models
-DatasetEEG_Corbetta
 old
+experiments
+model_checkpoints

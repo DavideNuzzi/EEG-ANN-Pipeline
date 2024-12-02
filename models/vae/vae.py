@@ -29,8 +29,8 @@ class VAE(BaseModel):
 
     def loss(self, x, reconstructed, mu, logvar):
 
-        reconstruction_loss = torch.mean((reconstructed - x)**2) * x.shape[0]
-        kl_divergence = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()) * x.shape[0]
+        reconstruction_loss = torch.mean((reconstructed - x)**2)
+        kl_divergence = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
         return reconstruction_loss, kl_divergence
 

@@ -26,15 +26,16 @@ class VAEClassifier(BaseModel):
         logvar = self.fc_logvar(encoded_flatten)
         z = self.reparameterize(mu, logvar)
         decoded = self.decoder(z)
-        y_pred = self.classifier(z)
+        # y_pred = self.classifier(z)
+        y_pred = self.classifier(mu)
 
         return decoded, mu, logvar, y_pred
 
     def loss(self, x, y, reconstructed, mu, logvar, y_pred):
 
-        reconstruction_loss = torch.mean((reconstructed - x)**2) * x.shape[0] 
-        kl_divergence = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()) * x.shape[0]
-        classifier_loss = torch.nn.functional.cross_entropy(y_pred, y, reduction='mean') * x.shape[0]
+        reconstruction_loss = torch.mean((reconstructed - x)**2)
+        kl_divergence = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()) 
+        classifier_loss = torch.nn.functional.cross_entropy(y_pred, y, reduction='mean')
 
         return reconstruction_loss, kl_divergence, classifier_loss
 

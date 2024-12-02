@@ -5,8 +5,8 @@ from models.layers import Conv2dMaxNorm
 
 class DeepNet(BaseClassifier):
 
-    def __init__(self, num_classes, channels):
-        super(DeepNet, self).__init__()
+    def __init__(self, num_classes, channels, metrics=None):
+        super(DeepNet, self).__init__(metrics)
 
         self.num_classes = num_classes
         self.channels = channels

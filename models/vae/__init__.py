@@ -1,7 +1,7 @@
 from .vae import VAE
 from .vae_classifier import VAEClassifier
 
-all = [
+__all__ = [
     'VAE',
     'VAEClassifier'
 ]

@@ -46,25 +46,43 @@ def check_labels_type(trials):
 
 
 def convert_labels_string_to_int(labels):
+    """
+    Converts a list of string labels to integers, ensuring a consistent mapping.
+    Returns the converted labels and a dictionary to map integers back to strings.
+    """
+    # Get all unique labels and sort them to ensure consistent ordering
+    unique_labels = sorted(set(labels))
 
-    # Data una lista di labels sotto in formato stringa le converte in intero
-    # e fornisce un dizionario per tornare indietro
-    labels_int_to_str = dict()
-    labels_str_to_int = dict()
-    labels_converted = []
+    # Create mappings from labels to integers and vice versa
+    labels_str_to_int = {label: idx for idx, label in enumerate(unique_labels)}
+    labels_int_to_str = {idx: label for idx, label in enumerate(unique_labels)}
 
-    for i, label in enumerate(labels):
-        
-        # Controllo se ho già trovato questa label
-        if label not in labels_str_to_int:
-
-            # Aggiungo un elemento a entrambi i dizionari di conversione
-            new_label_int = len(labels_int_to_str)
-            labels_str_to_int[label] = new_label_int
-            labels_int_to_str[new_label_int] = label
-
-        # La converto
-        label = labels_str_to_int[label]
-        labels_converted.append(label)
+    # Convert the labels using the consistent mapping
+    labels_converted = [labels_str_to_int[label] for label in labels]
 
     return labels_converted, labels_int_to_str
+
+
+# def convert_labels_string_to_int(labels):
+
+#     # Data una lista di labels sotto in formato stringa le converte in intero
+#     # e fornisce un dizionario per tornare indietro
+#     labels_int_to_str = dict()
+#     labels_str_to_int = dict()
+#     labels_converted = []
+
+#     for i, label in enumerate(labels):
+        
+#         # Controllo se ho già trovato questa label
+#         if label not in labels_str_to_int:
+
+#             # Aggiungo un elemento a entrambi i dizionari di conversione
+#             new_label_int = len(labels_int_to_str)
+#             labels_str_to_int[label] = new_label_int
+#             labels_int_to_str[new_label_int] = label
+
+#         # La converto
+#         label = labels_str_to_int[label]
+#         labels_converted.append(label)
+
+#     return labels_converted, labels_int_to_str

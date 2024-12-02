@@ -6,7 +6,7 @@ from helpers.eeg_utils import convert_labels_string_to_int
 
 class DatasetEEGTorch(Dataset):
 
-    def __init__(self, dataset: DatasetEEG):
+    def __init__(self, dataset: DatasetEEG, selected_labels=None):
         
         # Controllo che i trials siano tutti della stessa lunghezza
         # altrimenti non posso creare il dataset pytorch
@@ -14,11 +14,8 @@ class DatasetEEGTorch(Dataset):
             raise ValueError('I trial non hanno tutti la stessa lunghezza')
         
         # Mantengo un riferimento al dataset da cui previene
-        # e altre informazioni utili
         self.dataset_original = dataset
-        self.labels_type = dataset.labels_type
-        self.labels_format = dataset.labels_format
-
+        
         # Per comodità salvo anche qui come attributi le info sul dataset
         self.num_trials = dataset.num_trials
         self.num_timepoints = dataset.num_timepoints
@@ -32,7 +29,7 @@ class DatasetEEGTorch(Dataset):
 
         # Caso singola label: creo un tensore  (se sono stringhe devo prima convertirle in interi)
         # Caso multi-label: creo un dizionario e a ogni tipo di label associo un tensore
-        self.create_labels()
+        self.create_labels(selected_labels)
 
     def __len__(self):
         return self.num_trials
@@ -52,15 +49,42 @@ class DatasetEEGTorch(Dataset):
 
         return x, y
     
-    def create_labels(self):
+    def create_labels(self, selected_labels=None):
 
+        # Se lavoro con tutte le labels del dataset di partenza, posso salvare le info
+        if selected_labels is None:
+            self.labels_type = self.dataset_original.labels_type
+            self.labels_format = self.dataset_original.labels_format
+
+            if self.labels_type == 'multi_label':
+                self.label_names = [label_name for label_name in self.labels_format]
+        else:
+            # Altrimenti seleziono solo quelle che mi interessano
+            if type(selected_labels) is not list: selected_labels = [selected_labels]
+
+            self.labels_format = {label_name: self.dataset_original.labels_format[label_name] for label_name in selected_labels}
+            self.label_names = [label_name for label_name in self.labels_format]
+
+            # Se dopo la restrizione è cambiato in single-label, devo modificare le info
+            if len(self.labels_format) == 1:
+                self.labels_type = 'single_label'
+                self.label_names = self.label_names[0]
+                self.labels_format = self.labels_format[self.label_names]
+            else:
+                self.labels_type = 'multi_label'
+        
         # Separo il caso single-label da quello multi-label
 
         # Caso single label
         if self.labels_type == 'single_label':
-
+            
             # Creo una lista con le label
-            labels = [trial.label for trial in self.dataset_original.trials]
+            # Se partivo da un dataset multilabel devo usare i dizionari
+            if selected_labels is not None:
+                labels = [trial.label[self.label_names] for trial in self.dataset_original.trials]
+            else:
+                # Altrimenti posso prendere direttamente la label
+                labels = [trial.label for trial in self.dataset_original.trials]
 
             # Controllo se sono stringhe
             if self.labels_format == 'string':
@@ -73,10 +97,6 @@ class DatasetEEGTorch(Dataset):
             self.labels = torch.LongTensor(labels)
             
         else:
-
-            # Nel caso multilabel produco un tensore per ogni tipo di variabile
-            # e poi li metto in un dizionario
-            self.label_names = list(self.dataset_original.trials[0].label.keys())
 
             # Dizionario in cui mettere le label convertite
             labels = dict()

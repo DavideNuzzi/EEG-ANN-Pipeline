@@ -1,8 +1,13 @@
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
+from metrics.metrics import MeanMetric, ClassificationMetric
+from metrics import Accuracy
 
 class BaseModel(nn.Module, ABC):
+
+    def __init__(self):
+        super(BaseModel, self).__init__()
 
     @abstractmethod
     def forward(self, *args):
@@ -24,8 +29,21 @@ class BaseModel(nn.Module, ABC):
 
 class BaseClassifier(BaseModel):
 
+    def __init__(self, metrics=None, loss_weights=None):
+        super(BaseModel, self).__init__()
+
+        if metrics is None:
+            metrics = {'loss': MeanMetric(), 'accuracy': Accuracy()}
+        
+        self.metrics = metrics
+        self.loss_weights = loss_weights
+
     def loss(self, y, y_pred):
-        return nn.functional.cross_entropy(y_pred, y, reduction='mean') * y.shape[0]
+
+        if self.loss_weights is not None:
+            return nn.functional.cross_entropy(y_pred, y, reduction='mean', weight=self.loss_weights)
+        else:
+            return nn.functional.cross_entropy(y_pred, y, reduction='mean')
     
     def process_batch(self, batch, optimizer, is_eval=False):
         
@@ -46,11 +64,36 @@ class BaseClassifier(BaseModel):
             loss.backward()
             optimizer.step()
 
-        # Accuracy predizioni
+        # Classe predetta
         y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-        accuracy = torch.sum(y_pred_class == y)
 
-        return {'loss': loss.item(), 'accuracy': accuracy.item()}
+        # Passo le informazioni utili alla funzione che aggiorna le metriche
+        # Questa funzione dovrà essere definita dalla classe specifica
+        if self.metrics is not None:
+            return self.update_metrics(loss, y, y_pred_class)
+        else:
+            # Accuracy predizioni
+            accuracy = torch.sum(y_pred_class == y)
+
+            return {'loss': loss.item(), 'accuracy': accuracy.item()}
+
+    def update_metrics(self, loss, y, y_pred):
+
+        result = dict()
+
+        for metric_name in self.metrics:
+
+            metric = self.metrics[metric_name]
+
+            if isinstance(metric, MeanMetric):
+                metric.update(loss)
+                result[metric_name] = metric.result()
+                
+            elif isinstance(metric, ClassificationMetric):
+                metric.update(y, y_pred)
+                result[metric_name] = metric.result()
+
+        return result
 
     def predict(self, x):
         
@@ -61,3 +104,4 @@ class BaseClassifier(BaseModel):
         y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
 
         return y_pred_class
+    

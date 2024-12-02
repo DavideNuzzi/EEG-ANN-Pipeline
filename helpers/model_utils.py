@@ -1,7 +1,8 @@
 import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-
+from pathlib import Path
+import torch
 
 def count_model_parameters(model):
     model_pars_num = 0
@@ -54,6 +55,14 @@ def plot_training_metrics(metrics):
     plt.show()
     
 
+def reset_model_metrics(model):
+    # Resetto le metriche, se ci sono
+    if hasattr(model, 'metrics'):
+        if model.metrics is not None:
+            for metric_name in model.metrics:
+                model.metrics[metric_name].reset()
+
+
 def train_model(model, optimizer, dataloader_training, dataloader_validation=None, epochs=100,
                 early_stopping=False, patience=10, stopping_metric='loss'):
 
@@ -62,10 +71,13 @@ def train_model(model, optimizer, dataloader_training, dataloader_validation=Non
 
         # Se devo fare early stopping ho bisogno di salvare il modello migliore
         if early_stopping:
-            if stopping_metric == 'accuracy':
-                stopping_metric_best = -1e10
-            else:
+            saving_path = Path.cwd() / 'model_checkpoints'
+            Path.mkdir(saving_path, exist_ok=True)
+
+            if 'loss' in stopping_metric:
                 stopping_metric_best = 1e10
+            else:
+                stopping_metric_best = -1e10
             patience_epoch = 0
 
         # Ciclo sulle epoche mostrando una progressbar
@@ -81,6 +93,9 @@ def train_model(model, optimizer, dataloader_training, dataloader_validation=Non
             # Modalità training (per batchnorm e dropout)
             model.train()
 
+            # Resetto le metriche del modello
+            reset_model_metrics(model)
+
             # Ciclo sui batch
             for i, batch in enumerate(dataloader_training):
                 
@@ -91,11 +106,7 @@ def train_model(model, optimizer, dataloader_training, dataloader_validation=Non
                 for metric in batch_metrics:
                     if metric not in metrics_epoch_training:
                         metrics_epoch_training[metric] = 0
-                    metrics_epoch_training[metric] += batch_metrics[metric]
-
-            # Medio le metriche
-            for metric in metrics_epoch_training:
-                metrics_epoch_training[metric] /= len(dataloader_training) * dataloader_training.batch_size
+                    metrics_epoch_training[metric] = batch_metrics[metric]
 
             # -------------------------------- Test Phase -------------------------------- #
             if dataloader_validation is not None:
@@ -104,6 +115,9 @@ def train_model(model, optimizer, dataloader_training, dataloader_validation=Non
 
                 # Modalità eval (per batchnorm e dropout)
                 model.eval()
+
+                # Resetto le metriche del modello
+                reset_model_metrics(model)
 
                 # Ciclo sui batch
                 for i, batch in enumerate(dataloader_validation):
@@ -115,11 +129,7 @@ def train_model(model, optimizer, dataloader_training, dataloader_validation=Non
                     for metric in batch_metrics:
                         if metric not in metrics_epoch_validation:
                             metrics_epoch_validation[metric] = 0
-                        metrics_epoch_validation[metric] += batch_metrics[metric]
-
-                # Medio le metriche
-                for metric in metrics_epoch_validation:
-                    metrics_epoch_validation[metric] /= len(dataloader_validation) * dataloader_validation.batch_size
+                        metrics_epoch_validation[metric] = batch_metrics[metric]
 
             # Mostro i risultati (training o validation, a seconda del caso) nella progressbar
             if dataloader_validation is None:
@@ -144,19 +154,21 @@ def train_model(model, optimizer, dataloader_training, dataloader_validation=Non
                     stopping_metric_value = metrics_epoch_validation[stopping_metric]
 
                     improved = False
-                    if stopping_metric == 'accuracy':
-                        if stopping_metric_value > stopping_metric_best:
-                            improved = True
-                    else:
+                    if 'loss' in stopping_metric:
                         if stopping_metric_value < stopping_metric_best:
                             improved = True
-
+                    else:
+                        if stopping_metric_value > stopping_metric_best:
+                            improved = True
+                    
                     if improved:
                         stopping_metric_best = stopping_metric_value
                         best_model_state = model.state_dict()
+                        torch.save(best_model_state, saving_path / f'best_model.pth')
                         patience_epoch = 0
                     else:
                         if patience_epoch > patience:
+                            best_model_state = torch.load(saving_path / f'best_model.pth', weights_only=True)
                             model.load_state_dict(best_model_state)
                             break
                         else:

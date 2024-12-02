@@ -98,6 +98,12 @@ class DatasetEEG():
             for key in self.info:
                 info_string += f'{key:<25}:  {self.info[key]}\n'
         return info_string
+    
+    def __len__(self):
+        return self.num_trials
+    
+    def copy(self):
+        return DatasetEEG([trial for trial in self.trials], self.info)
 
     # Estrae un subset di trial e crea un nuovo dataset a partire da questi
     def extract_subset(self, idx):
@@ -106,18 +112,44 @@ class DatasetEEG():
         return DatasetEEG(trials_subset, self.info)
     
     # Splitta il dataset in training e validation
-    def split_dataset(self, validation_size=0.2):
+    def split_dataset(self, validation_size=0.2, balanced_labels=True):
 
-        # Quanti trial prendere
-        split_idx = int(np.round((1-validation_size) * self.num_trials))
 
-        # Li prendo a caso e non sequenzialmente
-        random_indices = list(np.random.permutation(self.num_trials))
-        train_indices = random_indices[0:split_idx]
-        validation_indices = random_indices[split_idx:]
+        if self.labels_type == 'multi_label' and balanced_labels:
+            print("Can't use balanced labels for a multi_label dataset, switching to unbalanced labels")
+            balanced_labels = False
 
-        # Creo i due dataset
+        if not balanced_labels:
+            split_idx = int(np.round((1 - validation_size) * self.num_trials))
+            random_indices = list(np.random.permutation(self.num_trials))
+
+            train_indices = random_indices[0:split_idx]
+            validation_indices = random_indices[split_idx:]
+        else:
+            # Stratified split: ensure label proportions are maintained
+            labels = [trial.label for trial in self.trials]
+            unique_labels = set(labels)
+            
+            train_indices = []
+            validation_indices = []
+            
+            for label in unique_labels:
+                # Get all indices for the current label
+                label_indices = [i for i, trial in enumerate(self.trials) if trial.label == label]
+                # Shuffle the indices
+                np.random.shuffle(label_indices)
+                # Calculate split index for the current label
+                split_idx = int(np.round((1 - validation_size) * len(label_indices)))
+                # Split the indices
+                train_indices.extend(label_indices[:split_idx])
+                validation_indices.extend(label_indices[split_idx:])
+            
+            # Shuffle the combined indices to mix different labels
+            np.random.shuffle(train_indices)
+            np.random.shuffle(validation_indices)
+
+        # Create the two datasets
         dataset_train = self.extract_subset(train_indices)
         dataset_validation = self.extract_subset(validation_indices)
-
+        
         return dataset_train, dataset_validation

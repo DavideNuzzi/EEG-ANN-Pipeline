@@ -5,8 +5,8 @@ from models.layers import EEGConvBlockMultiscale
 
 class EEGNetMultiscale(BaseClassifier):
 
-    def __init__(self, num_classes, channels, fs):
-        super(EEGNetMultiscale, self).__init__()
+    def __init__(self, num_classes, channels, fs, metrics=None):
+        super(EEGNetMultiscale, self).__init__(metrics)
 
         self.num_classes = num_classes
         self.channels = channels

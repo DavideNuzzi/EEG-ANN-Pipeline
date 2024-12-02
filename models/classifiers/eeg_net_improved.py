@@ -12,8 +12,8 @@ from models.layers import EEGConvBlock
 # Una volta fatto il reshape vorrei mettere dei gruppi
 class EEGNetImproved(BaseClassifier):
 
-    def __init__(self, num_classes, channels, fs):
-        super(EEGNetImproved, self).__init__()
+    def __init__(self, num_classes, channels, fs, metrics=None):
+        super(EEGNetImproved, self).__init__(metrics)
 
         self.num_classes = num_classes
         self.channels = channels
