@@ -13,18 +13,21 @@ This pipeline streamlines the process from data preprocessing to model evaluatio
 - **Analysis Tools**: Provides tools for representational similarity analysis (RSA) to compare neural activity patterns and sequence analysis to study reactivations in spontaneous activity.
 
 ## Repository Structure
-EEG-ANN-Pipeline/
-│── data/               # Sample EEG datasets and related resources
-│── dataset_bci/        # Scripts and data specific to brain-computer interface (BCI) datasets
-│── examples/           # Example scripts demonstrating how to use the pipeline
-│── helpers/            # Utility functions for data preprocessing and other tasks
-│── metrics/            # Implements evaluation metrics for model performance
-│── models/             # Neural network architectures and related components
-│── tdlm/               # Scripts for Temporally Delayed Linear Modeling (TDLM)
-│── requirements.txt    # Dependencies for running the project
-│── README.md           # Project documentation
+- data/: Contains sample EEG datasets and related resources.
+- dataset_bci/: Includes scripts and data specific to brain-computer interface (BCI) datasets.
+- examples/: Provides example scripts demonstrating how to use the pipeline for various analyses.
+- helpers/: Utility functions to support data preprocessing and other auxiliary tasks.
+- metrics/: Implements evaluation metrics for model performance assessment.
+- models/: Defines neural network architectures and related model components.
+- tdlm/: Contains scripts related to temporally delayed linear modeling (TDLM) for sequence analysis.
 
-
-
-
-
+## Getting Started
+1) Clone the Repository:
+```bash
+git clone https://github.com/DavideNuzzi/EEG-ANN-Pipeline.git
+cd EEG-ANN-Pipeline
+```
+2) Install Dependencies
+```bash
+pip install -r requirements.txt
+```
