@@ -31,3 +31,15 @@ cd EEG-ANN-Pipeline
 ```bash
 pip install -r requirements.txt
 ```
+3) Run Examples:
+Navigate to the examples/ directory and choose one of the example notebooks.
+
+## Usage
+The pipeline is designed to be modular and flexible. Users can:
+- Customize data preprocessing steps.
+- Select or define neural network architectures.
+- Choose specific analysis tools based on their research needs.
+Detailed documentation and tutorials are available in the examples/ directory to guide users through various use cases.
+
+## Contributing
+Contributions are welcome! If you have suggestions for improvements or new features, feel free to open an issue or submit a pull request.
